@@ -22,6 +22,8 @@
 param(
     [int]$Build = 1,
     [string]$UpdateBaseUrl = 'https://REPLACE-ME/browser-protection',
+    # Stable update feed written into the manifest, so the browser keeps updating from it (not the store).
+    [string]$FeedUrl = 'https://github.com/IAPW-NoZeroDay/guardian-browser-protection/releases/latest/download/updates.xml',
     [string]$KeyPath = (Join-Path $env:USERPROFILE '.browser-protection\signing.pem'),
     [string]$OutDir = (Join-Path $PSScriptRoot 'out'),
     [switch]$NewKey
@@ -61,6 +63,7 @@ $base = ($manifest.version -split '\.')[0..2] -join '.'
 $version = "$base.$Build"
 $manifest.version = $version
 $manifest | Add-Member -NotePropertyName version_name -NotePropertyValue "$base-fork.$Build" -Force
+if ($FeedUrl) { $manifest | Add-Member -NotePropertyName update_url -NotePropertyValue $FeedUrl -Force }
 $manifest | ConvertTo-Json -Depth 20 | Set-Content $manifestPath -Encoding utf8NoBOM
 
 # --- 3. Zip and sign ------------------------------------------------------------------------------------
