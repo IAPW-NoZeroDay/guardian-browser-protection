@@ -54,7 +54,6 @@
         "blocked.html",
         "scripts/utils/logger.js",
         "scripts/blocked.js",
-        "scripts/source-report.js",
         "scripts/browser-polyfill.js",
         "scripts/browser-polyfill-inline.js"
       ],

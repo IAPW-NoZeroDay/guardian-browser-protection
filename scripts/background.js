@@ -515,6 +515,35 @@ class CheckBackground {
     }
   }
 
+  // Fork: true for this extension's own pages (popup, options, blocked.html); false for content scripts.
+  isExtensionPage(sender) {
+    return typeof sender?.url === "string" && sender.url.startsWith(chrome.runtime.getURL(""));
+  }
+
+  // Fork: content scripts run inside web pages, so never hand them the webhook URL (it can carry
+  // the shared key as ?k=) or the managed auth headers. They only need to know whether it is on.
+  withoutWebhookSecrets(obj) {
+    const wh = obj?.genericWebhook;
+    if (!wh || typeof wh !== "object") return obj;
+    return {
+      ...obj,
+      genericWebhook: {
+        enabled: !!wh.enabled,
+        configured: !!wh.url,
+        events: Array.isArray(wh.events) ? wh.events : [],
+      },
+    };
+  }
+
+  // Fork: at most 5 user reports per 10 minutes, so a misbehaving page or frame can't flood the webhook.
+  allowUserReport() {
+    const now = Date.now();
+    this.userReportTimes = (this.userReportTimes || []).filter((t) => now - t < 10 * 60 * 1000);
+    if (this.userReportTimes.length >= 5) return false;
+    this.userReportTimes.push(now);
+    return true;
+  }
+
   // CyberDrain integration - Verdict determination
   verdictForUrl(raw) {
     const origin = this.urlOrigin(raw);
@@ -1145,7 +1174,7 @@ class CheckBackground {
             const branding = await this.configManager.getFinalBrandingConfig();
             sendResponse({
               success: true,
-              branding: branding,
+              branding: this.isExtensionPage(sender) ? branding : this.withoutWebhookSecrets(branding),
             });
           } catch (error) {
             logger.error("Failed to get branding config:", error);
@@ -1392,7 +1421,10 @@ class CheckBackground {
         case "GET_CONFIG":
           try {
             const config = await this.configManager.getConfig();
-            sendResponse({ success: true, config });
+            sendResponse({
+              success: true,
+              config: this.isExtensionPage(sender) ? config : this.withoutWebhookSecrets(config),
+            });
           } catch (error) {
             logger.error("Check: Failed to get config:", error);
             sendResponse({ success: false, error: error.message });
@@ -1698,6 +1730,19 @@ class CheckBackground {
               return;
             }
 
+            // Fork: user reports are rate-limited, and say where they came from. From the warning banner
+            // (a content script) the page address is taken from the browser, not from the message.
+            let data = message.data;
+            if (message.webhookType === "user_report") {
+              if (!this.allowUserReport()) {
+                sendResponse({ success: false, error: "Too many reports; try again later" });
+                return;
+              }
+              data = this.isExtensionPage(sender)
+                ? { ...data, reportedFrom: "block_page" }
+                : { ...data, reportedFrom: "warning_banner", url: sender.url || "" };
+            }
+
             const userProfile = await this.getCurrentProfile();
             const config = await this.configManager.getConfig();
 
@@ -1709,7 +1754,7 @@ class CheckBackground {
 
             const result = await this.webhookManager.sendWebhook(
               message.webhookType,
-              message.data,
+              data,
               metadata
             );
 

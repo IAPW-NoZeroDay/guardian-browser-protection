@@ -158,6 +158,9 @@
   async function init() {
     const section = $("sourceReport");
     if (!section) return;
+    // blocked.html is web-accessible, so any site can frame it; never show the form inside a frame,
+    // where a page could overlay it and trick the user into sending a report (clickjacking).
+    if (window.top !== window) return;
     const b = await getBranding();
     const wh = b && b.genericWebhook;
     const on = !!(wh && wh.enabled && wh.url && Array.isArray(wh.events) && wh.events.includes("user_report"));
@@ -184,9 +187,6 @@
     toggleFields();
     section.hidden = false;
   }
-
-  // Exposed for tests only.
-  if (typeof window !== "undefined") window.__guardianSourceReport = { parseSender, SOURCE_LABELS };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();

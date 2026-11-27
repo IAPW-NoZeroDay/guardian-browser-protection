@@ -29,6 +29,7 @@ if (window.checkExtensionLoaded) {
   let lastPageSourceScanTime = 0; // When the page source was captured
   let developerConsoleLoggingEnabled = false; // Cache for developer console logging setting
   let showingBanner = false; // Flag to prevent DOM monitoring loops when showing banners
+  let bannerHost = null; // Fork: our banner element. Never looked up by id, which the page could plant first.
   let escalatedToBlock = false; // Flag to indicate page has been escalated to block - stop all monitoring
   const MAX_SCANS = 8; // Allow more rescans for dynamically loaded content
   const SCAN_COOLDOWN = 800; // 800ms between scans - allow faster rescans for dynamic content
@@ -3953,7 +3954,7 @@ if (window.checkExtensionLoaded) {
 
       // Clear existing security UI when re-running protection due to DOM changes
       // ONLY clear if we're not currently showing a warning banner, or if this is the initial run
-      if (isRerun && !document.getElementById("ms365-warning-banner")) {
+      if (isRerun && !bannerHost?.isConnected) {
         clearSecurityUI();
       } else if (!isRerun) {
         // Always clear on initial run to start fresh
@@ -6089,9 +6090,9 @@ if (window.checkExtensionLoaded) {
   function clearSecurityUI() {
     try {
       // Remove warning banner
-      const warningBanner = document.getElementById("ms365-warning-banner");
-      if (warningBanner) {
-        warningBanner.remove();
+      if (bannerHost) {
+        bannerHost.remove();
+        bannerHost = null;
         showingBanner = false; // Clear the flag when banner is removed
         logger.log("Cleared existing warning banner");
       }
@@ -6253,8 +6254,9 @@ if (window.checkExtensionLoaded) {
         try {
           chrome.runtime.sendMessage({ type: "REPORT_FALSE_POSITIVE", url: location.href, reason });
         } catch (_) {}
-        const supportEmail = brandingNow.supportEmail || "";
-        if (!supportEmail) return;
+        // A plain address only, so a policy value can't smuggle extra mailto: fields (cc, bcc, body).
+        const supportEmail = String(brandingNow.supportEmail || "").trim();
+        if (!/^[^\s@<>"?&#,;:]+@[^\s@<>"?&#,;:]+\.[a-z]{2,}$/i.test(supportEmail)) return;
         let indicatorsText;
         try {
           indicatorsText = extractPhishingIndicators(analysisData);
@@ -6266,18 +6268,20 @@ if (window.checkExtensionLoaded) {
             ? `Detection Score: ${analysisData.score}/${analysisData.threshold}`
             : "Detection Score: N/A";
         const subject = `Security Review: Mark Clean - ${location.hostname}`;
+        // Mail clients truncate long mailto: links; keep the body well under 2,000 characters.
         const body = encodeURIComponent(
-          `Security Review Request: Possible Clean/Safe Page\n\nPage URL: ${location.href}\nHostname: ${location.hostname}\nTimestamp (UTC): ${new Date().toISOString()}\nBanner Title: ${bannerTitle}\nDisplayed Reason: ${reason}\n${detectionScoreLine}\n\nDetected Indicators:\n${indicatorsText}\n\nUser Justification:\n[Explain why this page is safe]`
+          `Security Review Request: Possible Clean/Safe Page\n\nPage URL: ${location.href.slice(0, 500)}\nHostname: ${location.hostname}\nTimestamp (UTC): ${new Date().toISOString()}\nBanner Title: ${bannerTitle}\nDisplayed Reason: ${String(reason).slice(0, 300)}\n${detectionScoreLine}\n\nDetected Indicators:\n${String(indicatorsText).slice(0, 600)}\n\nUser Justification:\n[Explain why this page is safe]`
         );
         window.location.href = `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}&body=${body}`;
       };
 
-      let banner = document.getElementById("ms365-warning-banner");
-      const isNewBanner = !banner;
+      const isNewBanner = !bannerHost?.isConnected;
       if (isNewBanner) {
-        banner = document.createElement("div");
-        banner.id = "ms365-warning-banner";
-        banner.style.cssText = `
+        bannerHost = document.createElement("div");
+        bannerHost.id = "ms365-warning-banner";
+        // `all: initial !important` inline beats any page stylesheet, so the page can't hide or fade the host.
+        bannerHost.style.cssText = `
+          all: initial !important;
           position: fixed !important;
           top: 0 !important;
           left: 0 !important;
@@ -6290,9 +6294,10 @@ if (window.checkExtensionLoaded) {
           display: block !important;
         `;
         // CRITICAL: Register the banner BEFORE adding to DOM (its content lives in a closed shadow root)
-        registerInjectedElement(banner);
-        document.body.insertBefore(banner, document.body.firstChild);
+        registerInjectedElement(bannerHost);
+        document.body.insertBefore(bannerHost, document.body.firstChild);
       }
+      const banner = bannerHost;
 
       const pushPageDown = () => {
         if (!banner.isConnected) return;
@@ -6308,6 +6313,7 @@ if (window.checkExtensionLoaded) {
         onFalsePositive,
         onDismiss: () => {
           banner.remove();
+          if (bannerHost === banner) bannerHost = null;
           document.body.style.marginTop = "0";
           showingBanner = false;
         },
@@ -6783,7 +6789,8 @@ if (window.checkExtensionLoaded) {
       // Fork: the background sends this as a detection_alert to CIPP *and* the generic webhook,
       // so don't stop here when only the generic webhook is on (upstream skipped it unless CIPP was configured).
       const cippOn = !!(config.enableCippReporting && config.cippServerUrl);
-      const genericOn = !!(config.genericWebhook && config.genericWebhook.enabled && config.genericWebhook.url);
+      // Content scripts get the generic webhook without its URL (see background withoutWebhookSecrets).
+      const genericOn = !!(config.genericWebhook?.enabled && (config.genericWebhook.configured || config.genericWebhook.url));
       if (!cippOn && !genericOn) {
         logger.debug("CIPP reporting and generic webhook both disabled");
         return;

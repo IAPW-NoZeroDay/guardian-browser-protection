@@ -7,8 +7,10 @@
  *   2. The answer is sent as a `user_report` webhook (same payload as the block-page form).
  *   3. Only then does "Leave this page" become the main action.
  *
- * Rendered in a closed shadow root: the page's CSS can't restyle it, the page's scripts can't read what
- * the user types, and its inputs don't feed the page's own phishing heuristics.
+ * Rendered in a closed shadow root: the page's CSS can't restyle it, the page's scripts can't reach its
+ * elements or read the inputs' values, and its inputs don't feed the page's own phishing heuristics.
+ * Keyboard, input and paste events are composed, so they still cross the shadow boundary; we stop them
+ * at the shadow root, which hides them from the page's bubbling listeners (not from capturing ones).
  * Content scripts share one isolated world, so content.js calls GuardianBanner.render(...).
  */
 // eslint-disable-next-line no-unused-vars
@@ -122,6 +124,9 @@ var GuardianBanner = (function () {
     let sr = shadows.get(host);
     if (!sr) {
       sr = host.attachShadow({ mode: "closed" });
+      for (const type of ["keydown", "keyup", "keypress", "beforeinput", "input", "paste", "compositionend"]) {
+        sr.addEventListener(type, (e) => e.stopPropagation());
+      }
       shadows.set(host, sr);
     }
     return sr;
@@ -184,7 +189,8 @@ var GuardianBanner = (function () {
     const wh = b.genericWebhook;
     const company = clip(b.companyName, 60) || clip(b.productName, 60) || "IT";
     const phone = clip(b.supportPhone, 40);
-    const canReport = !!(wh && wh.enabled && wh.url && Array.isArray(wh.events) && wh.events.includes("user_report"));
+    // The background gives content scripts { enabled, configured, events } without the URL.
+    const canReport = !!(wh && wh.enabled && (wh.configured || wh.url) && Array.isArray(wh.events) && wh.events.includes("user_report"));
     const kind = opts.kind;
     const compact = kind === "scanning";
     const theme = compact ? THEMES.info : (kind === "critical" || kind === "rogue") ? THEMES.danger : THEMES.caution;
@@ -286,7 +292,7 @@ var GuardianBanner = (function () {
             receivedAround: "",
             sharedBy: sel.src === "sharedfile" ? clip(sharedBy.value, 200) : "",
             site: siteUrl,
-            note: "Reported from the warning banner",
+            note: "",
           },
           enteredPassword: sel.pw,
           timestamp: new Date().toISOString(),
