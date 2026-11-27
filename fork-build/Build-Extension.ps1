@@ -20,6 +20,7 @@
 #>
 [CmdletBinding()]
 param(
+    [ValidateRange(0, 65535)]   # each part of a Chrome version is 0-65535
     [int]$Build = 1,
     [string]$UpdateBaseUrl = 'https://REPLACE-ME/browser-protection',
     # Stable update feed written into the manifest, so the browser keeps updating from it (not the store).
@@ -32,6 +33,10 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot
 $crx3 = Join-Path $PSScriptRoot 'crx3.mjs'
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { throw 'Node.js is required (node crx3.mjs).' }
+$fullKey = [IO.Path]::GetFullPath($KeyPath)
+if ($fullKey.StartsWith([IO.Path]::GetFullPath($repo).TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw "The signing key must live outside the repository, not at $fullKey."
+}
 
 if ($NewKey) {
     $dir = Split-Path $KeyPath
@@ -76,7 +81,7 @@ $id = node $crx3 pack $zip $KeyPath $crx
 if ($LASTEXITCODE) { throw 'Signing failed.' }
 
 # --- 4. updates.xml ---------------------------------------------------------------------------------------
-$codebase = "$($UpdateBaseUrl.TrimEnd('/'))/browser-protection-$version.crx"
+$codebase = [Security.SecurityElement]::Escape("$($UpdateBaseUrl.TrimEnd('/'))/browser-protection-$version.crx")
 @"
 <?xml version='1.0' encoding='UTF-8'?>
 <gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>

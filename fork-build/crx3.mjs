@@ -11,7 +11,7 @@
 //   SignedData { bytes crx_id = 1; }   crx_id = first 16 bytes of SHA-256(public key DER)
 //   signature = RSA-SHA256("CRX3 SignedData\0" | uint32le len(signed_header_data) | signed_header_data | zip)
 import { createHash, createPrivateKey, createPublicKey, createSign, generateKeyPairSync } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 function varint(n) {
   const out = [];
@@ -35,9 +35,9 @@ function keyInfo(pemPath) {
 const [cmd, a, b, c] = process.argv.slice(2);
 if (cmd === "keygen") {
   if (!a) throw new Error("usage: keygen <key.pem>");
-  if (existsSync(a)) throw new Error(`${a} already exists; refusing to overwrite a signing key`);
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-  writeFileSync(a, privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600 });
+  // flag "wx": fail if the file exists, so an existing signing key is never overwritten.
+  writeFileSync(a, privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600, flag: "wx" });
   console.log(keyInfo(a).extId);
 } else if (cmd === "id") {
   console.log(keyInfo(a).extId);
