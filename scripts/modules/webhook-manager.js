@@ -75,6 +75,7 @@ export class WebhookManager {
         subject: str(src.subject, 300),
         receivedAround: str(src.receivedAround, 60),
         sharedBy: str(src.sharedBy, 200),
+        site: str(src.site, 2048),
         note: str(src.note, 1000),
       },
       enteredPassword: ["yes", "no", "unsure"].includes(data.enteredPassword) ? data.enteredPassword : "unknown",

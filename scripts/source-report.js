@@ -23,6 +23,19 @@
 
   const $ = (id) => document.getElementById(id);
   const clip = (s, n) => String(s || "").trim().slice(0, n);
+
+  // A pasted web address, with or without https://. Returns the cleaned address, or "" if it isn't one.
+  function parseSite(raw) {
+    const text = String(raw || "").trim().slice(0, 2048);
+    if (!text) return "";
+    try {
+      const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : "https://" + text);
+      if (!/^https?:$/.test(u.protocol) || !/\.[a-z]{2,}$/i.test(u.hostname)) return "";
+      return u.href;
+    } catch (e) {
+      return "";
+    }
+  }
   let company = "IT"; // replaced by customBranding.companyName when set
 
   // Accept "Name <someone@example.com>" as pasted from Outlook, or a bare address.
@@ -50,6 +63,7 @@
     const type = selected("srcType");
     $("srcEmailFields").hidden = type !== "email";
     $("srcSharedFields").hidden = type !== "sharedfile";
+    $("srcWebFields").hidden = type !== "web";
     $("srcSubmitBtn").disabled = !type;
     updatePasswordHint();
   }
@@ -99,6 +113,7 @@
         subject: type === "email" ? clip($("srcSubject").value, 300) : "",
         receivedAround: type === "email" ? clip($("srcWhen").value, 60) : "",
         sharedBy: type === "sharedfile" ? clip($("srcSharedBy").value, 200) : "",
+        site: type === "web" ? parseSite($("srcSite").value) : "",
         note: clip($("srcNote").value, 1000),
       },
       enteredPassword: selected("srcPassword") || "unknown",
@@ -112,6 +127,9 @@
     if (!report.source.type) return setStatus("warn", "Pick where the link came from.");
     if (report.source.type === "email" && !report.source.sender && !report.source.subject) {
       return setStatus("warn", "Add the sender's address or the subject, so we can find the email.");
+    }
+    if (report.source.type === "web" && clip($("srcSite").value, 2048) && !report.source.site) {
+      return setStatus("warn", "That doesn't look like a web address. Copy it from the address bar.");
     }
     if (report.source.type === "email" && report.source.sender && !report.source.senderAddress) {
       return setStatus("warn", "That sender doesn't look like an email address. Copy it from the 'From' line in Outlook.");

@@ -36,6 +36,19 @@ var GuardianBanner = (function () {
 
   const clip = (s, n) => String(s || "").trim().slice(0, n);
 
+  // A pasted web address, with or without https://. Returns the cleaned address, or "" if it isn't one.
+  function parseSite(raw) {
+    const text = String(raw || "").trim().slice(0, 2048);
+    if (!text) return "";
+    try {
+      const u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : "https://" + text);
+      if (!/^https?:$/.test(u.protocol) || !/\.[a-z]{2,}$/i.test(u.hostname)) return "";
+      return u.href;
+    } catch (e) {
+      return "";
+    }
+  }
+
   function el(tag, attrs, ...kids) {
     const e = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs || {})) {
@@ -228,6 +241,9 @@ var GuardianBanner = (function () {
         el("label", {}, "Who was it from?", sender, el("span", { class: "hint", text: "Copy the address from the email's From line." })),
         el("label", {}, "Subject line", subject));
       const sharedBox = el("div", { hidden: true }, el("label", {}, "Who shared it with you, or which company?", sharedBy));
+      const site = el("input", { type: "text", maxlength: "2048", autocomplete: "off", placeholder: "https://example.com/page", "aria-label": "Which website?" });
+      const siteBox = el("div", { hidden: true }, el("label", {}, "Which website?", site,
+        el("span", { class: "hint", text: "Copy the address from the tab where you clicked the link, if you still have it." })));
       const chipRow = (items, key, onPick) => {
         const row = el("div", { class: "chips", role: "group" });
         for (const [val, label] of items) {
@@ -242,7 +258,7 @@ var GuardianBanner = (function () {
         }
         return row;
       };
-      const srcRow = chipRow(SOURCES, "src", (v) => { emailBox.hidden = v !== "email"; sharedBox.hidden = v !== "sharedfile"; });
+      const srcRow = chipRow(SOURCES, "src", (v) => { emailBox.hidden = v !== "email"; sharedBox.hidden = v !== "sharedfile"; siteBox.hidden = v !== "web"; });
       const pwRow = chipRow([["no", "No"], ["yes", "Yes"], ["unsure", "Not sure"]], "pw");
       const sendBtn = el("button", { class: "primary", type: "button" }, `Send to ${company}`);
 
@@ -254,6 +270,8 @@ var GuardianBanner = (function () {
         const addr = m && EMAIL_RE.test(m[1]) ? m[1].toLowerCase() : "";
         if (sel.src === "email" && !raw && !clip(subject.value, 300)) return fail("Add the sender's address or the subject, so the email can be found.");
         if (sel.src === "email" && raw && !addr) return fail("That sender doesn't look like an email address.");
+        const siteUrl = sel.src === "web" ? parseSite(site.value) : "";
+        if (sel.src === "web" && clip(site.value, 2048) && !siteUrl) return fail("That doesn't look like a web address. Copy it from the address bar.");
         if (!sel.pw) return fail("Tell us whether you typed your password.");
         const label = (SOURCES.find((s) => s[0] === sel.src) || [])[1] || sel.src;
         const d = opts.details || {};
@@ -267,6 +285,7 @@ var GuardianBanner = (function () {
             subject: sel.src === "email" ? clip(subject.value, 300) : "",
             receivedAround: "",
             sharedBy: sel.src === "sharedfile" ? clip(sharedBy.value, 200) : "",
+            site: siteUrl,
             note: "Reported from the warning banner",
           },
           enteredPassword: sel.pw,
@@ -290,7 +309,7 @@ var GuardianBanner = (function () {
       return el("div", {},
         el("p", { class: "title" }, "Where did this link come from?"),
         el("div", { class: "form" },
-          el("div", {}, srcRow), emailBox, sharedBox,
+          el("div", {}, srcRow), emailBox, sharedBox, siteBox,
           el("div", {}, el("p", { class: "q" }, "Did you type your password on this page?"), pwRow),
           err),
         el("div", { class: "acts" }, sendBtn,
