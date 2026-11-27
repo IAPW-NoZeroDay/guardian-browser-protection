@@ -109,10 +109,27 @@
               "rogue_app_detected",
               "threat_detected",
               "validation_event",
-              "domain_squatting_detected"
+              "domain_squatting_detected",
+              "user_report"
             ]
           },
           "default": []
+        },
+        "headers": {
+          "title": "Headers (fork)",
+          "description": "Extra HTTP headers sent with every generic webhook call, e.g. a shared-secret auth header. Content-Type, User-Agent and X-Webhook-* cannot be overridden.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "staticFields": {
+          "title": "Static fields (fork)",
+          "description": "Key/value pairs added to every generic webhook payload under 'fields', e.g. {\"device\": \"FRONTDESK-02\", \"client\": \"nc3195\"}.",
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
         }
       }
     },
@@ -174,6 +191,12 @@
           "type": "string",
           "format": "uri",
           "default": ""
+        },
+        "supportPhone": {
+          "title": "Support phone (fork)",
+          "description": "Phone number shown on the block page, e.g. when the user says they typed their password.",
+          "type": "string",
+          "default": ""
         }
       }
     },
@@ -209,7 +232,7 @@
             },
             "homoglyph": {
               "title": "Homoglyph Detection",
-              "description": "Detect confusable characters (e.g., 'a' vs 'а')",
+              "description": "Detect confusable characters (e.g., 'a' vs '\u0430')",
               "type": "boolean",
               "default": true
             },
@@ -242,7 +265,11 @@
           "title": "Action",
           "description": "Action to take when domain squatting is detected",
           "type": "string",
-          "enum": ["block", "warn", "log"],
+          "enum": [
+            "block",
+            "warn",
+            "log"
+          ],
           "default": "block"
         },
         "logDetections": {

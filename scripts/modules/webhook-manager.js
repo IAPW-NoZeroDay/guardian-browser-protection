@@ -10,6 +10,7 @@ export class WebhookManager {
       ROGUE_APP: "rogue_app_detected",
       THREAT_DETECTED: "threat_detected",
       VALIDATION_EVENT: "validation_event",
+      USER_REPORT: "user_report", // Fork: block-page "where did this link come from?"
     };
   }
 
@@ -47,11 +48,59 @@ export class WebhookManager {
           url: genericWebhook.url,
           enabled: true,
           type: "generic",
+          // Fork: optional managed auth headers and static fields (e.g. device, client)
+          headers: this.safeHeaders(genericWebhook.headers),
+          staticFields: this.safeObject(genericWebhook.staticFields),
         });
       }
     }
 
     return webhooks.length > 0 ? webhooks : [];
+  }
+
+  // Fork: user's answer from the block page. Only known fields, length-capped.
+  buildUserReportPayload(data = {}) {
+    const str = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
+    const src = data.source && typeof data.source === "object" ? data.source : {};
+    return {
+      url: str(data.url, 2048),
+      blockedReason: str(data.blockedReason, 500),
+      rule: str(data.rule, 200),
+      referrer: str(data.referrer, 2048),
+      source: {
+        type: str(src.type, 20),
+        label: str(src.label, 80),
+        sender: str(src.sender, 320),
+        senderAddress: str(src.senderAddress, 320),
+        subject: str(src.subject, 300),
+        receivedAround: str(src.receivedAround, 60),
+        sharedBy: str(src.sharedBy, 200),
+        note: str(src.note, 1000),
+      },
+      enteredPassword: ["yes", "no", "unsure"].includes(data.enteredPassword) ? data.enteredPassword : "unknown",
+      timestamp: str(data.timestamp, 40) || new Date().toISOString(),
+    };
+  }
+
+  // Fork: only plain string key/values from managed policy; never override protocol headers.
+  safeObject(obj) {
+    const out = {};
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return out;
+    for (const [k, v] of Object.entries(obj)) {
+      if (typeof k === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(k) && (typeof v === "string" || typeof v === "number" || typeof v === "boolean")) {
+        out[k] = String(v).slice(0, 512);
+      }
+    }
+    return out;
+  }
+
+  safeHeaders(obj) {
+    const reserved = ["content-type", "content-length", "host", "user-agent", "x-webhook-type", "x-webhook-version"];
+    const out = {};
+    for (const [k, v] of Object.entries(this.safeObject(obj))) {
+      if (!reserved.includes(k.toLowerCase()) && /^[A-Za-z0-9-]+$/.test(k) && !/[\r\n]/.test(v)) out[k] = v;
+    }
+    return out;
   }
 
   buildPayload(webhookType, data, metadata = {}) {
@@ -83,6 +132,9 @@ export class WebhookManager {
         break;
       case this.webhookTypes.VALIDATION_EVENT:
         basePayload.data = this.buildValidationEventPayload(data);
+        break;
+      case this.webhookTypes.USER_REPORT:
+        basePayload.data = this.buildUserReportPayload(data);
         break;
       default:
         basePayload.data = data;
@@ -372,6 +424,9 @@ export class WebhookManager {
       webhookConfig.type === "cipp"
         ? this.buildCippPayload(data, metadata)
         : this.buildPayload(webhookType, data, metadata);
+    if (webhookConfig.staticFields && Object.keys(webhookConfig.staticFields).length) {
+      payload.fields = { ...webhookConfig.staticFields };
+    }
 
     try {
       const response = await fetch(webhookConfig.url, {
@@ -383,6 +438,7 @@ export class WebhookManager {
           }`,
           "X-Webhook-Type": webhookType,
           "X-Webhook-Version": "1.0",
+          ...(webhookConfig.headers || {}),
         },
         body: JSON.stringify(payload),
       });

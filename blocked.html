@@ -302,6 +302,29 @@
           color: #9ca3af;
       }
 
+
+      /* Fork: "where did this link come from?" form */
+      .source-report { text-align: left; margin: 0 0 30px; padding: 20px; border: 1px solid #d1d5db; border-radius: 8px; background: #f9fafb; }
+      .source-report h2 { font-size: 18px; margin: 0 0 6px; color: #111827; }
+      .source-report > p { margin: 0 0 14px; color: #4b5563; font-size: 14px; }
+      .source-report fieldset { border: 0; margin: 0 0 14px; padding: 0; }
+      .source-report legend { font-weight: 600; font-size: 14px; color: #111827; margin-bottom: 8px; }
+      .src-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px; }
+      .src-options label { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fff; cursor: pointer; font-size: 14px; }
+      .src-options label:has(input:checked) { border-color: var(--primary-color, #f77f00); box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.04); }
+      .src-fields { display: grid; gap: 10px; margin: 0 0 14px; }
+      .src-fields label { display: grid; gap: 4px; font-size: 13px; font-weight: 600; color: #374151; }
+      .src-fields input, .src-fields textarea { font: inherit; font-weight: 400; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; }
+      .src-fields input:focus, .src-fields textarea:focus { outline: 2px solid var(--primary-color, #f77f00); outline-offset: 1px; }
+      .src-hint { font-size: 12px; color: #6b7280; font-weight: 400; }
+      .src-urgent { margin: 0 0 14px; padding: 12px; border-radius: 6px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; font-size: 14px; }
+      .src-urgent a, #srcPhoneLine a { font-weight: 700; color: inherit; }
+      #srcPhoneLine { font-size: 13px; color: #4b5563; margin-top: 12px; }
+      .src-status { margin-top: 12px; padding: 10px 12px; border-radius: 6px; font-size: 14px; }
+      .src-status.ok { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+      .src-status.warn { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+      .src-status.bad { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+      .source-report [hidden] { display: none !important; }
     </style>
   </head>
   <body class="loading">
@@ -333,6 +356,61 @@
           Report False Positive
         </button>
       </div>
+
+      <!-- Fork: "where did this link come from?" (scripts/source-report.js) -->
+      <section class="source-report" id="sourceReport" hidden aria-labelledby="srcTitle">
+        <h2 id="srcTitle">Help us stop this for everyone</h2>
+        <p>Tell <span id="srcCompany">IT</span> where you found this link. If it came by email, we can remove it from everyone else's mailbox. It takes 30 seconds.</p>
+        <form id="srcForm" novalidate>
+          <fieldset>
+            <legend>Where did the link come from?</legend>
+            <div class="src-options">
+              <label><input type="radio" name="srcType" value="email"> An email</label>
+              <label><input type="radio" name="srcType" value="sharedfile"> A shared file, SharePoint or OneDrive</label>
+              <label><input type="radio" name="srcType" value="teams"> Teams or another chat</label>
+              <label><input type="radio" name="srcType" value="sms"> A text message</label>
+              <label><input type="radio" name="srcType" value="web"> Another website or a search</label>
+              <label><input type="radio" name="srcType" value="unknown"> I'm not sure</label>
+            </div>
+          </fieldset>
+          <div class="src-fields" id="srcEmailFields" hidden>
+            <label>Who was it from?
+              <input id="srcSender" type="text" maxlength="320" autocomplete="off" placeholder="name@company.com">
+              <span class="src-hint">In Outlook, open the email and copy the address from the "From" line. Pasting "Name &lt;address&gt;" is fine.</span>
+            </label>
+            <label>Subject line
+              <input id="srcSubject" type="text" maxlength="300" autocomplete="off" placeholder="e.g. Invoice 4471 shared with you">
+            </label>
+            <label>When did it arrive? <span class="src-hint">(roughly, optional)</span>
+              <input id="srcWhen" type="text" maxlength="60" autocomplete="off" placeholder="e.g. this morning, about 9:30">
+            </label>
+          </div>
+          <div class="src-fields" id="srcSharedFields" hidden>
+            <label>Who shared it with you, or which company?
+              <input id="srcSharedBy" type="text" maxlength="200" autocomplete="off" placeholder="e.g. Jane at Contoso Supply">
+            </label>
+          </div>
+          <fieldset>
+            <legend>Did you type your password on that page?</legend>
+            <div class="src-options">
+              <label><input type="radio" name="srcPassword" value="no"> No</label>
+              <label><input type="radio" name="srcPassword" value="yes"> Yes</label>
+              <label><input type="radio" name="srcPassword" value="unsure"> I'm not sure</label>
+            </div>
+          </fieldset>
+          <div class="src-urgent" id="srcUrgent" hidden>
+            Don't worry, but act now: send this form, then <span id="srcUrgentPhoneWrap">call us on <a id="srcUrgentPhone" href="#">our support line</a></span> so we can secure your account before anyone uses it.
+          </div>
+          <div class="src-fields">
+            <label>Anything else? <span class="src-hint">(optional)</span>
+              <textarea id="srcNote" rows="2" maxlength="1000" placeholder="e.g. it looked like a DocuSign request from our accountant"></textarea>
+            </label>
+          </div>
+          <button type="submit" class="btn btn-primary" id="srcSubmitBtn" disabled>Send to IT</button>
+        </form>
+        <div class="src-status" id="srcStatus" role="status" aria-live="polite" hidden></div>
+        <p id="srcPhoneLine" hidden>Need help now? Call <a id="srcPhoneLink" href="#">support</a>.</p>
+      </section>
 
       <div class="details">
         <div class="details-title">Block Details</div>
@@ -418,5 +496,6 @@
     </div>
 
     <script src="scripts/blocked.js"></script>
+    <script src="scripts/source-report.js"></script>
   </body>
 </html>

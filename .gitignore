@@ -334,3 +334,7 @@ storybook-static/
 
 # End of https://www.gitignore.io/api/node
 .github/copilot-instructions.md
+
+# Fork build output (CRX, zip, staging). The signing key lives outside the repo.
+fork-build/out/
+*.pem

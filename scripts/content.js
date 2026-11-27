@@ -6969,9 +6969,13 @@ if (window.checkExtensionLoaded) {
         });
       });
 
-      // Check if CIPP reporting is enabled and URL is configured
-      if (!config.enableCippReporting || !config.cippServerUrl) {
-        logger.debug("CIPP reporting disabled or no server URL configured");
+      // Check if CIPP reporting is enabled and URL is configured.
+      // Fork: the background sends this as a detection_alert to CIPP *and* the generic webhook,
+      // so don't stop here when only the generic webhook is on (upstream skipped it unless CIPP was configured).
+      const cippOn = !!(config.enableCippReporting && config.cippServerUrl);
+      const genericOn = !!(config.genericWebhook && config.genericWebhook.enabled && config.genericWebhook.url);
+      if (!cippOn && !genericOn) {
+        logger.debug("CIPP reporting and generic webhook both disabled");
         return;
       }
 
