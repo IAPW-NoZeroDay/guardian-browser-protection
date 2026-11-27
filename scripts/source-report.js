@@ -23,6 +23,7 @@
 
   const $ = (id) => document.getElementById(id);
   const clip = (s, n) => String(s || "").trim().slice(0, n);
+  let company = "IT"; // replaced by customBranding.companyName when set
 
   // Accept "Name <someone@example.com>" as pasted from Outlook, or a bare address.
   function parseSender(raw) {
@@ -126,13 +127,13 @@
       setStatus(
         "ok",
         report.enteredPassword === "yes" || report.enteredPassword === "unsure"
-          ? "Thank you, we've got it. Because you may have typed your password, please call us now."
-          : "Thank you, we've got it. We'll remove this from everyone else's mailbox. You can close this tab."
+          ? `Thank you, ${company} has your report. Because you may have typed your password, call ${company} now.`
+          : `Thank you, ${company} has your report. They'll remove it from everyone else's mailbox. You can close this tab.`
       );
     } catch (e) {
       btn.disabled = false;
-      btn.textContent = "Send to IT";
-      setStatus("bad", "We couldn't send that. Please use Contact Admin or call us instead.");
+      btn.textContent = `Send to ${company}`;
+      setStatus("bad", `That didn't send. Contact ${company} instead.`);
     }
   }
 
@@ -155,8 +156,9 @@
     } else {
       $("srcUrgentPhoneWrap").hidden = true;
     }
-    const company = clip(b.companyName, 60);
-    if (company) $("srcCompany").textContent = company;
+    company = clip(b.companyName, 60) || "IT";
+    $("srcCompany").textContent = company;
+    $("srcSubmitBtn").textContent = `Send to ${company}`;
 
     document.querySelectorAll('input[name="srcType"]').forEach((el) => el.addEventListener("change", toggleFields));
     document.querySelectorAll('input[name="srcPassword"]').forEach((el) => el.addEventListener("change", updatePasswordHint));

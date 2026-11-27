@@ -6217,304 +6217,114 @@ if (window.checkExtensionLoaded) {
         return `${details.reason || "Unknown detection criteria"}`;
       };
 
-      const applyBranding = (bannerEl, branding) => {
-        if (!bannerEl) return;
-        try {
-          const companyName =
-            branding.companyName || branding.productName || "CyberDrain";
-          const supportEmail = branding.supportEmail || "";
-          let logoUrl = branding.logoUrl || "";
-          const packagedFallback = chrome.runtime.getURL("images/icon48.png");
-          // Simplified: rely on upstream input validation; only fallback when empty/falsy
-          if (!logoUrl) {
-            logoUrl = packagedFallback;
-          }
-
-          let brandingSlot = bannerEl.querySelector("#check-banner-branding");
-          if (!brandingSlot) {
-            const container = document.createElement("div");
-            container.id = "check-banner-branding";
-            container.style.cssText =
-              "display:flex;align-items:center;gap:8px;";
-
-            // CRITICAL: Register the branding container
-            registerInjectedElement(container);
-
-            const innerWrapper = bannerEl.firstElementChild;
-            if (innerWrapper)
-              innerWrapper.insertBefore(container, innerWrapper.firstChild);
-            brandingSlot = container;
-          }
-
-          if (brandingSlot) {
-            brandingSlot.innerHTML = "";
-            if (logoUrl) {
-              const img = document.createElement("img");
-              img.src = logoUrl;
-              img.alt = companyName + " logo";
-              img.style.cssText =
-                "width:28px;height:28px;object-fit:contain;border-radius:4px;background:rgba(255,255,255,0.25);padding:2px;";
-
-              // CRITICAL: Register the logo image
-              registerInjectedElement(img);
-              brandingSlot.appendChild(img);
-            }
-
-            const textWrap = document.createElement("div");
-            textWrap.style.cssText =
-              "display:flex;flex-direction:column;align-items:flex-start;line-height:1.2;";
-
-            // CRITICAL: Register the text wrapper
-            registerInjectedElement(textWrap);
-
-            const titleSpan = document.createElement("span");
-            titleSpan.style.cssText = "font-size:12px;font-weight:600;";
-            titleSpan.textContent = "Protected by " + companyName;
-
-            // CRITICAL: Register the title span
-            registerInjectedElement(titleSpan);
-            textWrap.appendChild(titleSpan);
-
-            if (supportEmail) {
-              const contactDiv = document.createElement("div");
-              const contactLink = document.createElement("a");
-              contactLink.style.cssText =
-                "color:#fff;text-decoration:underline;font-size:11px;cursor:pointer;";
-              contactLink.textContent = "Report as clean/safe";
-              contactLink.title =
-                "Report this page as clean/safe to your administrator";
-              contactLink.href = `mailto:${supportEmail}?subject=${encodeURIComponent(
-                "Security Review: Possible Clean/Safe Page"
-              )}`;
-              contactLink.addEventListener("click", (e) => {
-                try {
-                  chrome.runtime.sendMessage({
-                    type: "REPORT_FALSE_POSITIVE",
-                    url: location.href,
-                    reason,
-                  });
-                } catch (_) {}
-
-                let indicatorsText;
-                try {
-                  indicatorsText = extractPhishingIndicators(analysisData);
-                } catch (err) {
-                  indicatorsText = "Parse error - see console";
-                }
-
-                const detectionScoreLine =
-                  analysisData?.score !== undefined
-                    ? `Detection Score: ${analysisData.score}/${analysisData.threshold}`
-                    : "Detection Score: N/A";
-                const subject = `Security Review: Mark Clean - ${location.hostname}`;
-                const body = encodeURIComponent(
-                  `Security Review Request: Possible Clean/Safe Page\n\nPage URL: ${
-                    location.href
-                  }\nHostname: ${
-                    location.hostname
-                  }\nTimestamp (UTC): ${new Date().toISOString()}\nBanner Title: ${bannerTitle}\nDisplayed Reason: ${reason}\n${detectionScoreLine}\n\nDetected Indicators:\n${indicatorsText}\n\nUser Justification:\n[Explain why this page is safe]`
-                );
-                e.currentTarget.href = `mailto:${supportEmail}?subject=${encodeURIComponent(
-                  subject
-                )}&body=${body}`;
-              });
-
-              // CRITICAL: Register contact elements
-              registerInjectedElement(contactDiv);
-              registerInjectedElement(contactLink);
-
-              contactDiv.appendChild(contactLink);
-              textWrap.appendChild(contactDiv);
-            }
-            brandingSlot.appendChild(textWrap);
-          }
-        } catch (e) {
-          /* non-fatal */
-        }
-      };
-
-      const detailsText = analysisData?.score
-        ? ` (Score: ${analysisData.score}/${analysisData.threshold})`
-        : "";
-
-      // Determine banner type and styling based on analysis data
+      // Fork: the banner's look and report-first flow live in scripts/banner-ui.js (GuardianBanner).
+      // Map upstream's banner types onto its kinds; detection itself is unchanged.
+      let kind = "warning";
       let bannerTitle = "Suspicious Microsoft 365 Login Page";
-      let bannerIcon = "⚠️";
-      let bannerColor = "linear-gradient(135deg, #ff9800, #f57c00)"; // Orange for warnings
-
-      // Check for scanning state
       if (analysisData?.severity === "scanning") {
+        kind = "scanning";
         bannerTitle = "Security Scan in Progress";
-        bannerIcon = "🔍";
-        bannerColor = "linear-gradient(135deg, #2196f3, #1976d2)"; // Blue for scanning
-      }
-      // Check for domain squatting detection - tailored messaging
-      else if (
+      } else if (
         analysisData?.type === "domain_squatting" ||
         reason.toLowerCase().includes("domain squatting") ||
         reason.toLowerCase().includes("typosquat")
       ) {
-        bannerTitle = "⚠️ Suspicious Domain Detected";
-        bannerIcon = "🔗";
-        bannerColor = "linear-gradient(135deg, #ff5722, #d84315)"; // Same orange-red as high risk warnings
-        // Override reason text for domain squatting to be more user-friendly
-        if (analysisData?.protectedDomain) {
-          reason = `This website's domain looks similar to "${analysisData.protectedDomain}" but is NOT the legitimate site. Be careful entering any credentials.`;
-        }
-      }
-      // Check for rogue app detection
-      else if (
+        kind = "squatting";
+        bannerTitle = "Suspicious Domain Detected";
+      } else if (
         analysisData?.type === "rogue_app_on_legitimate_domain" ||
         reason.toLowerCase().includes("rogue oauth") ||
         reason.toLowerCase().includes("rogue app")
       ) {
-        bannerTitle = "🚨 CRITICAL SECURITY THREAT";
-        bannerIcon = "🛡️";
-        bannerColor = "linear-gradient(135deg, #f44336, #d32f2f)"; // Red for critical threats
+        kind = "rogue";
+        bannerTitle = "Critical Security Threat";
       } else if (analysisData?.severity === "critical") {
+        kind = "critical";
         bannerTitle = "Critical Security Warning";
-        bannerIcon = "🚨";
-        bannerColor = "linear-gradient(135deg, #f44336, #d32f2f)"; // Red for critical
       } else if (analysisData?.severity === "high") {
+        kind = "high";
         bannerTitle = "High Risk Security Warning";
-        bannerIcon = "⚠️";
-        bannerColor = "linear-gradient(135deg, #ff5722, #d84315)"; // Orange-red for high risk
       }
 
-      const renderBannerContent = (bannerElement) => {
-        if (!bannerElement) return;
+      let brandingNow = {};
 
-        const root = document.createElement("div");
-        root.style.position = "relative";
-        root.style.display = "flex";
-        root.style.alignItems = "center";
-        root.style.gap = "16px";
-        root.style.minHeight = "56px";
-        root.style.paddingRight = "40px";
-
-        const left = document.createElement("div");
-        left.id = "check-banner-left";
-        left.style.display = "flex";
-        left.style.alignItems = "center";
-        left.style.gap = "12px";
-        left.style.zIndex = "2";
-
-        const center = document.createElement("div");
-        center.style.position = "absolute";
-        center.style.left = "50%";
-        center.style.top = "50%";
-        center.style.transform = "translate(-50%,-50%)";
-        center.style.textAlign = "center";
-        center.style.maxWidth = "60%";
-        center.style.zIndex = "1";
-        center.style.pointerEvents = "none";
-
-        const icon = document.createElement("span");
-        icon.style.display = "block";
-        icon.style.fontSize = "24px";
-        icon.style.marginBottom = "4px";
-        icon.textContent = bannerIcon;
-
-        const title = document.createElement("strong");
-        title.style.display = "block";
-        title.textContent = bannerTitle;
-
-        const subtitle = document.createElement("small");
-        subtitle.style.opacity = "0.95";
-        subtitle.style.display = "block";
-        subtitle.style.marginTop = "2px";
-        subtitle.textContent = `${reason}${detailsText}`;
-
-        center.appendChild(icon);
-        center.appendChild(title);
-        center.appendChild(subtitle);
-
-        const dismissButton = document.createElement("button");
-        dismissButton.title = "Dismiss";
-        dismissButton.style.position = "absolute";
-        dismissButton.style.right = "16px";
-        dismissButton.style.top = "50%";
-        dismissButton.style.transform = "translateY(-50%)";
-        dismissButton.style.background = "rgba(255,255,255,0.2)";
-        dismissButton.style.border = "1px solid rgba(255,255,255,0.3)";
-        dismissButton.style.color = "#fff";
-        dismissButton.style.padding = "0";
-        dismissButton.style.borderRadius = "4px";
-        dismissButton.style.cursor = "pointer";
-        dismissButton.style.width = "24px";
-        dismissButton.style.height = "24px";
-        dismissButton.style.minWidth = "24px";
-        dismissButton.style.minHeight = "24px";
-        dismissButton.style.display = "flex";
-        dismissButton.style.alignItems = "center";
-        dismissButton.style.justifyContent = "center";
-        dismissButton.style.fontSize = "14px";
-        dismissButton.style.fontWeight = "bold";
-        dismissButton.style.lineHeight = "1";
-        dismissButton.style.boxSizing = "border-box";
-        dismissButton.style.fontFamily = "monospace";
-        dismissButton.style.zIndex = "3";
-        dismissButton.textContent = "×";
-        dismissButton.addEventListener("click", () => {
-          bannerElement.remove();
-          document.body.style.marginTop = "0";
-          showingBanner = false;
-        });
-
-        root.appendChild(left);
-        root.appendChild(center);
-        root.appendChild(dismissButton);
-        bannerElement.replaceChildren(root);
+      // "Think this is wrong?": tell the background (false_positive_report webhook) and open an email to support.
+      const onFalsePositive = () => {
+        try {
+          chrome.runtime.sendMessage({ type: "REPORT_FALSE_POSITIVE", url: location.href, reason });
+        } catch (_) {}
+        const supportEmail = brandingNow.supportEmail || "";
+        if (!supportEmail) return;
+        let indicatorsText;
+        try {
+          indicatorsText = extractPhishingIndicators(analysisData);
+        } catch (err) {
+          indicatorsText = "Parse error - see console";
+        }
+        const detectionScoreLine =
+          analysisData?.score !== undefined
+            ? `Detection Score: ${analysisData.score}/${analysisData.threshold}`
+            : "Detection Score: N/A";
+        const subject = `Security Review: Mark Clean - ${location.hostname}`;
+        const body = encodeURIComponent(
+          `Security Review Request: Possible Clean/Safe Page\n\nPage URL: ${location.href}\nHostname: ${location.hostname}\nTimestamp (UTC): ${new Date().toISOString()}\nBanner Title: ${bannerTitle}\nDisplayed Reason: ${reason}\n${detectionScoreLine}\n\nDetected Indicators:\n${indicatorsText}\n\nUser Justification:\n[Explain why this page is safe]`
+        );
+        window.location.href = `mailto:${supportEmail}?subject=${encodeURIComponent(subject)}&body=${body}`;
       };
 
-      // Check if banner already exists
       let banner = document.getElementById("ms365-warning-banner");
+      const isNewBanner = !banner;
+      if (isNewBanner) {
+        banner = document.createElement("div");
+        banner.id = "ms365-warning-banner";
+        banner.style.cssText = `
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          width: 100% !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          border: 0 !important;
+          background: transparent !important;
+          z-index: 2147483646 !important;
+          display: block !important;
+        `;
+        // CRITICAL: Register the banner BEFORE adding to DOM (its content lives in a closed shadow root)
+        registerInjectedElement(banner);
+        document.body.insertBefore(banner, document.body.firstChild);
+      }
 
-      if (banner) {
-        // Update existing banner content and color
-        renderBannerContent(banner);
-        banner.style.background = bannerColor;
-        fetchBranding().then((branding) => applyBranding(banner, branding));
+      const pushPageDown = () => {
+        if (!banner.isConnected) return;
+        document.body.style.marginTop = `${banner.offsetHeight || 64}px`;
+      };
+      const bannerOpts = {
+        kind,
+        reason,
+        protectedDomain: analysisData?.protectedDomain || "",
+        details: analysisData || {},
+        branding: {},
+        onLayout: pushPageDown,
+        onFalsePositive,
+        onDismiss: () => {
+          banner.remove();
+          document.body.style.marginTop = "0";
+          showingBanner = false;
+        },
+      };
 
-        // Ensure page content is still pushed down
-        const bannerHeight = banner.offsetHeight || 64;
-        document.body.style.marginTop = `${bannerHeight}px`;
+      // Show at once with defaults; re-render when branding arrives (company name, phone, whether reporting is on).
+      GuardianBanner.render(banner, bannerOpts);
+      fetchBranding().then((branding) => {
+        brandingNow = branding || {};
+        GuardianBanner.render(banner, { ...bannerOpts, branding: brandingNow });
+      });
+      pushPageDown();
 
+      if (!isNewBanner) {
         logger.log("Warning banner updated with new analysis");
         return;
       }
-
-      // Create new banner
-      banner = document.createElement("div");
-      banner.id = "ms365-warning-banner";
-      banner.style.cssText = `
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100% !important;
-        background: ${bannerColor} !important;
-        color: white !important;
-        padding: 16px !important;
-        z-index: 2147483646 !important;
-        font-family: system-ui, -apple-system, sans-serif !important;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
-        text-align: center !important;
-      `;
-
-      // CRITICAL: Register the banner BEFORE adding to DOM
-      registerInjectedElement(banner);
-
-      renderBannerContent(banner);
-      document.body.insertBefore(banner, document.body.firstChild);
-
-      // Register all child elements created via innerHTML
-      const allChildren = banner.querySelectorAll("*");
-      allChildren.forEach((child) => registerInjectedElement(child));
-
-      fetchBranding().then((branding) => applyBranding(banner, branding));
-
-      const bannerHeight = banner.offsetHeight || 64;
-      document.body.style.marginTop = `${bannerHeight}px`;
 
       logger.log(
         "Warning banner displayed and all elements registered for exclusion"
