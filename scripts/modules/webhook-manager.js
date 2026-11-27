@@ -58,17 +58,19 @@ export class WebhookManager {
     return webhooks.length > 0 ? webhooks : [];
   }
 
-  // Fork: user's answer from the block page. Only known fields, length-capped.
+  // Fork: the user's answer from the warning banner or the block page. Only known fields, length-capped.
   buildUserReportPayload(data = {}) {
     const str = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
+    const oneOf = (v, list, fallback) => (list.includes(v) ? v : fallback);
     const src = data.source && typeof data.source === "object" ? data.source : {};
     return {
+      reportedFrom: oneOf(data.reportedFrom, ["warning_banner", "block_page"], "unknown"),
       url: str(data.url, 2048),
       blockedReason: str(data.blockedReason, 500),
       rule: str(data.rule, 200),
       referrer: str(data.referrer, 2048),
       source: {
-        type: str(src.type, 20),
+        type: oneOf(src.type, ["email", "sharedfile", "teams", "sms", "web", "unknown"], "unknown"),
         label: str(src.label, 80),
         sender: str(src.sender, 320),
         senderAddress: str(src.senderAddress, 320),
@@ -78,30 +80,46 @@ export class WebhookManager {
         site: str(src.site, 2048),
         note: str(src.note, 1000),
       },
-      enteredPassword: ["yes", "no", "unsure"].includes(data.enteredPassword) ? data.enteredPassword : "unknown",
+      enteredPassword: oneOf(data.enteredPassword, ["yes", "no", "unsure"], "unknown"),
       timestamp: str(data.timestamp, 40) || new Date().toISOString(),
     };
   }
 
-  // Fork: only plain string key/values from managed policy; never override protocol headers.
+  // Fork: only plain key/values from managed policy (at most 32 keys, 512 characters each).
   safeObject(obj) {
     const out = {};
     if (!obj || typeof obj !== "object" || Array.isArray(obj)) return out;
     for (const [k, v] of Object.entries(obj)) {
-      if (typeof k === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(k) && (typeof v === "string" || typeof v === "number" || typeof v === "boolean")) {
+      if (Object.keys(out).length >= 32) break;
+      if (/^[A-Za-z0-9_.-]{1,64}$/.test(k) && ["string", "number", "boolean"].includes(typeof v)) {
         out[k] = String(v).slice(0, 512);
       }
     }
     return out;
   }
 
+  // Fork: header names must be tokens and values printable ASCII (no CR/LF or other control characters),
+  // and protocol headers (Content-Type, User-Agent, X-Webhook-*, ...) can't be overridden.
   safeHeaders(obj) {
-    const reserved = ["content-type", "content-length", "host", "user-agent", "x-webhook-type", "x-webhook-version"];
+    const reserved = new Set(["content-type", "content-length", "host", "user-agent", "cookie", "origin", "referer", "connection", "transfer-encoding"]);
     const out = {};
     for (const [k, v] of Object.entries(this.safeObject(obj))) {
-      if (!reserved.includes(k.toLowerCase()) && /^[A-Za-z0-9-]+$/.test(k) && !/[\r\n]/.test(v)) out[k] = v;
+      const name = k.toLowerCase();
+      if (/^[A-Za-z0-9-]+$/.test(k) && !reserved.has(name) && !name.startsWith("x-webhook-") && /^[\x20-\x7e]*$/.test(v)) {
+        out[k] = v;
+      }
     }
     return out;
+  }
+
+  // Fork: for logs. The query string can carry the webhook's shared key (?k=), so log the origin and path only.
+  redactUrl(url) {
+    try {
+      const u = new URL(url);
+      return u.origin + u.pathname;
+    } catch (_) {
+      return "(invalid URL)";
+    }
   }
 
   buildPayload(webhookType, data, metadata = {}) {
@@ -432,6 +450,11 @@ export class WebhookManager {
     try {
       const response = await fetch(webhookConfig.url, {
         method: "POST",
+        // Fork: no cookies or referrer, give up after 15 s, and never follow a redirect with the auth headers.
+        credentials: "omit",
+        referrerPolicy: "no-referrer",
+        redirect: webhookConfig.type === "generic" ? "error" : "follow",
+        signal: AbortSignal.timeout(15000),
         headers: {
           "Content-Type": "application/json",
           "User-Agent": `Check/${
@@ -449,7 +472,7 @@ export class WebhookManager {
       }
 
       logger.log(
-        `Webhook sent to ${webhookConfig.url} successfully: ${webhookType} (${webhookConfig.type})`
+        `Webhook sent to ${this.redactUrl(webhookConfig.url)} successfully: ${webhookType} (${webhookConfig.type})`
       );
       return {
         success: true,

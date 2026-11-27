@@ -117,7 +117,7 @@
         },
         "headers": {
           "title": "Headers (fork)",
-          "description": "Extra HTTP headers sent with every generic webhook call, e.g. a shared-secret auth header. Content-Type, User-Agent and X-Webhook-* cannot be overridden.",
+          "description": "Extra HTTP headers sent with every generic webhook call, e.g. a shared-secret auth header such as x-guardian-key. Names are letters, digits and '-'; values printable ASCII, up to 512 characters. Content-Type, User-Agent, Host, Cookie, Origin, Referer and X-Webhook-* cannot be overridden. Redirects are not followed.",
           "type": "object",
           "additionalProperties": {
             "type": "string"
@@ -125,7 +125,7 @@
         },
         "staticFields": {
           "title": "Static fields (fork)",
-          "description": "Key/value pairs added to every generic webhook payload under 'fields', e.g. {\"device\": \"FRONTDESK-02\", \"client\": \"nc3195\"}.",
+          "description": "Key/value pairs added to every generic webhook payload under 'fields', e.g. {\"device\": \"FRONTDESK-02\", \"client\": \"client-01\"}. Up to 32 keys; values up to 512 characters.",
           "type": "object",
           "additionalProperties": {
             "type": "string"
